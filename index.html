@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
 <title>Observer — Receiver (Final, v2)</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#071017">
 <style>
 :root{
   --bg:#071017; --panel:#0b161a; --accent:#6be7ff; --muted:#bfeefc; --led:#ff914d; --glass: rgba(255,255,255,0.04);
@@ -385,6 +387,11 @@ window.addEventListener('beforeunload', ()=>{ clearEnv(); if(scheduleTimer) clea
 /* debug */
 window.Observer = { connect: connectSite, logs: logs, setLang: (m)=>{ currentLang=m; updateLanguageBadgeUI(); forceRerenderLogs(); } };
 
+</script>
+<script>
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js");
+}
 </script>
 </body>
 </html>
