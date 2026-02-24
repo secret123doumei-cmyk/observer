@@ -1,0 +1,16 @@
+{
+  "name": "Observer Receiver",
+  "short_name": "Observer",
+  "display": "standalone",
+  "start_url": "./index.html",
+  "background_color": "#071017",
+  "theme_color": "#071017",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
