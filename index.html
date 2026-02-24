@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>Observer — Receiver (Final, v2)</title>
+<style>
+:root{
+  --bg:#071017; --panel:#0b161a; --accent:#6be7ff; --muted:#bfeefc; --led:#ff914d; --glass: rgba(255,255,255,0.04);
+}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#061017,#041014);font-family:"Noto Sans JP","Inter",system-ui,-apple-system,Helvetica,Arial;color:var(--muted);-webkit-font-smoothing:antialiased;overflow:hidden;touch-action:manipulation}
+#app{width:100%;max-width:480px;height:100dvh;margin:0 auto;display:flex;flex-direction:column;box-sizing:border-box;padding:10px;gap:8px}
+
+/* Receive */
+.receive{flex:0 0 52%;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.2));border:1px solid var(--glass);box-shadow:0 6px 16px rgba(0,0,0,0.6), inset 0 2px 0 rgba(255,255,255,0.02);position:relative;overflow:hidden;display:flex;flex-direction:column;padding:10px}
+.receive::before{content:"";position:absolute;inset:0;background-image:linear-gradient(90deg, rgba(255,255,255,0.015) 0.5px, transparent 0.5px);background-size:6px 100%;opacity:0.35;pointer-events:none}
+.recvHeader{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.title{font-weight:700;font-size:15px;color:var(--accent)}
+.time{font-size:12px;color:#9fd7e5}
+.log{flex:1 1 auto;overflow:auto;padding:6px;font-size:13px;line-height:1.15;color:var(--muted)}
+.log .entry{margin-bottom:8px}
+.log .jp{color:#d8f7ff}
+.log .en{color:#bfe5f4;font-size:12px;margin-top:4px}
+.log .highlight{background:linear-gradient(90deg, rgba(255,110,110,0.06), rgba(255,170,120,0.02));padding:6px;border-radius:6px}
+
+/* status */
+.status{flex:0 0 48px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.status .left,.status .right{display:flex;align-items:center;gap:8px}
+.corr{width:60%;min-width:160px;background:#021018;border-radius:8px;padding:6px;border:1px solid var(--glass)}
+.corr .bar{height:10px;background:linear-gradient(90deg,#3fe7ff,#7ad0ff);width:0;border-radius:6px;transition:width .25s}
+.badge{background:linear-gradient(180deg,#082024,#031014);border:1px solid var(--glass);padding:6px 8px;border-radius:8px;font-size:12px;color:#9fd7e5;box-shadow:inset 0 1px 0 rgba(255,255,255,0.02);user-select:none}
+
+/* scenes */
+.scenes{flex:0 0 36%;display:flex;flex-direction:column;gap:8px}
+.sceneGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:stretch}
+
+/* ===== UPDATED BUTTON LAYOUT: 2-line centered, auto shrink, fixed height ===== */
+.sceneBtn{
+  background:linear-gradient(180deg,#0b2e33,#041416);
+  border:1px solid rgba(255,255,255,0.03);
+  border-radius:10px;
+  padding:6px 6px;
+  font-weight:700;
+  color:var(--muted);
+  display:flex;
+  flex-direction:column;
+  justify-content:center; /* vertical center */
+  align-items:center;     /* center horizontally */
+  gap:2px;
+  box-shadow:0 6px 10px rgba(0,0,0,0.55);
+  height:52px;            /* fixed height to keep grid stable on small screens */
+  position:relative;
+  overflow:hidden;
+  text-align:center;
+}
+
+/* Japanese line: slightly larger, auto-shrinks via clamp */
+.sceneBtn .jp{
+  width:100%;
+  font-size:clamp(10px, 2.6vw, 13px);
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* English subtitle: smaller, auto-shrinks */
+.sceneBtn .en{
+  width:100%;
+  font-size:clamp(8px, 2.0vw, 10px);
+  opacity:0.88;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  margin-top:2px;
+}
+
+.sceneBtn .led{position:absolute;right:8px;top:8px;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.6), rgba(255,255,255,0.12) 12%, rgba(0,0,0,0.2) 50%);border:1px solid rgba(255,255,255,0.04);box-shadow:0 2px 6px rgba(0,0,0,0.6)}
+.sceneBtn.active{background:linear-gradient(180deg,#0f4e55,#02383a);border-color:rgba(107,231,255,0.12);box-shadow:0 10px 18px rgba(0,0,0,0.6) inset}
+.sceneBtn.active .led{background:radial-gradient(circle at 30% 30%, rgba(255,150,90,0.98), rgba(255,80,30,0.7) 30%);box-shadow:0 0 8px rgba(255,120,50,0.12)}
+
+/* init overlay */
+#initOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(0,0,0,0.72), rgba(0,0,0,0.9));z-index:999}
+#initBtn{padding:16px 22px;font-size:15px;border-radius:12px;background:linear-gradient(180deg,#08242a,#051216);border:2px solid rgba(107,231,255,0.08);color:var(--muted);font-weight:700;letter-spacing:1px}
+
+/* overlays */
+.flash{position:fixed;inset:0;pointer-events:none;z-index:90;transition:background .12s linear}
+.buzzer{position:fixed;right:12px;bottom:12px;background:linear-gradient(180deg,#2b2b2b,#161616);padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);display:none;color:var(--muted);z-index:95}
+.userScrollHint{position:absolute;right:12px;top:12px;background:rgba(0,0,0,0.5);padding:4px 6px;border-radius:6px;font-size:11px;color:#ffd1bf;display:none}
+@media (max-width:420px){ .sceneGrid{gap:6px} .sceneBtn{height:50px} }
+</style>
+</head>
+<body>
+<div id="app" role="application" aria-label="Observer Receiver">
+  <div class="receive" role="region" aria-label="Receive screen">
+    <div class="recvHeader">
+      <div class="title">OBSERVER — RECEIVER</div>
+      <div class="time" id="time">--:--:--</div>
+    </div>
+    <div id="log" class="log" aria-live="polite"></div>
+    <div id="userScrollHint" class="userScrollHint">Viewing history — auto-scroll paused</div>
+  </div>
+
+  <div class="status" role="status">
+    <div class="left">
+      <div id="languageBadge" class="badge" title="Tap to toggle language">JP / EN</div>
+      <div id="powerBadge" class="badge">ACTIVE</div>
+    </div>
+    <div class="right">
+      <div class="corr" aria-hidden="false"><div class="bar" id="corrBar" style="width:0%"></div></div>
+      <div id="corrPct" class="badge">Corr 0%</div>
+    </div>
+  </div>
+
+  <div class="scenes" role="navigation" aria-label="Scenes">
+    <div id="sceneGrid" class="sceneGrid" role="grid" aria-label="Scene buttons"></div>
+  </div>
+</div>
+
+<div id="initOverlay">
+  <div><button id="initBtn">INITIALIZE RECEIVER<br><small style="color:#9fd7e5;display:block;margin-top:6px;font-weight:400">TAP TO START MONITORING</small></button></div>
+</div>
+<div id="flash" class="flash" aria-hidden="true"></div>
+<div id="buzzer" class="buzzer" aria-hidden="true">BUZZER</div>
+
+<script>
+/* === Final Receiver v2
+   - logs trimmed in 100-batch to MAX_LOGS
+   - scene buttons: 2-line centered with auto-shrinked font
+   - language switching (BOTH -> JP -> EN)
+*/
+
+/* --- Data (20 sites) --- */
+const SITES = [
+  {id:0,jp:"前線基地",en:"Forward Post",field:"electromagnetic",rare:"Calibration echo"},
+  {id:1,jp:"深宇宙",en:"Deep Space",field:"interstellar",rare:"Dust cloud burst"},
+  {id:2,jp:"水中観測",en:"Subsea Array",field:"planetary",rare:"Seafloor resonance"},
+  {id:3,jp:"研究区画",en:"Lab Sector",field:"particle",rare:"Detector sync"},
+  {id:4,jp:"廃都市",en:"Ruined City",field:"electromagnetic",rare:"Residual discharge"},
+  {id:5,jp:"軌道EV",en:"Orbital EV",field:"gravity",rare:"Tether slack"},
+  {id:6,jp:"地下施設",en:"Subterranean",field:"planetary",rare:"Cavern amplification"},
+  {id:7,jp:"外縁宙域",en:"Outer Rim",field:"interstellar",rare:"Micro impacts cluster"},
+  {id:8,jp:"極地基地",en:"Polar Station",field:"icy",rare:"Ice-sheet pulse"},
+  {id:9,jp:"重力研究",en:"Gravity Lab",field:"gravity",rare:"Phase distortion"},
+  {id:10,jp:"戦場跡",en:"Field Ruins",field:"planetary",rare:"Shock echo"},
+  {id:11,jp:"大気圏上層",en:"Upper Atmosphere",field:"planetary",rare:"Friction modulation"},
+  {id:12,jp:"採掘場",en:"Mining Site",field:"planetary",rare:"Drill resonance"},
+  {id:13,jp:"太陽観測",en:"Solar Watch",field:"stellar",rare:"Flare ejection"},
+  {id:14,jp:"時間断層",en:"Temporal Rift",field:"temporal",rare:"Time-reversal pulse"},
+  {id:15,jp:"浮遊都市",en:"Floating City",field:"gravity",rare:"Buoyancy instability"},
+  {id:16,jp:"惑星洞窟",en:"Cavern Probe",field:"planetary",rare:"Drip rhythm"},
+  {id:17,jp:"宇宙港",en:"Spaceport",field:"electromagnetic",rare:"Startup exhaust"},
+  {id:18,jp:"監視衛星",en:"Watcher Sat",field:"spatial",rare:"Orbit resonance"},
+  {id:19,jp:"未知領域",en:"Unknown Sector",field:"unclassified",rare:"Generated noise cluster"}
+];
+
+/* --- vocab (EN + JP) --- */
+const BASE_VOCAB = {
+  electromagnetic:["Carrier period","Background radio intensity","Polarization drift","Band noise","Signal distortion","Frequency hop","Spurious emission","Noise floor","Reflection phase","Carrier phase offset"],
+  interstellar:["Density fluctuation","Absorption line strength","Dust reflection","Redshift","Scattering rate","Plasma instability","Radiation tail","Interstellar magnetic field","Luminosity variation","Dust temperature"],
+  planetary:["Crustal vibration","Atmospheric pressure variation","Wave propagation","Reflectance change","Strata resonance","Surface turbulence","Tidal response","Wind peak","Surface ripple","Thunder cell activity"],
+  particle:["Arrival count","Energy peak","Count density","Detection variance","Incidence angle","Background spike","Decay chain","Particle flux","Charge ratio","Positron signature"],
+  gravity:["Micro-strain rate","Tidal stress","Curvature variation","Gravity gradient","Phase offset","Mass distribution bias","Center-of-mass shift","Wave-like amplitude","Resonance line","Strain peak"],
+  stellar:["Flare intensity","Pulsation period","Spectral line width","Luminosity variance","Coronal interference","Sunspot activity","Emission band","Short-term flux","Particle influx","Brightness edge"],
+  temporal:["Sync offset","Reference time bias","Delay amount","Period shift","Time dispersion","Phase jump","Time dilation","Jitter increase","Sync collapse","Delay correlation"],
+  spatial:["Position offset","Orbital delay","Attitude drift","Tracking scatter","Drift rate","Attitude noise","Tracking loss","Orbit resonance","Range offset","Track spike"],
+  icy:["Reflectance change","Ice pressure shift","Emission detect","Melt spot","Crack event","Ice-sheet vibration","Fracture sound","Ice fall","Thin-film interference","Melt pulse"],
+  unclassified:["Unknown waveform","Unclassified peak","Generative noise","Random burst","Mirror distortion","Autocorrelation noise","Synthetic noise","External sync failure","Cluster transient","Stochastic peak"]
+};
+const BASE_VOCAB_JP = {
+  electromagnetic:["搬送波周期","背景電波強度","偏波ドリフト","帯域ノイズ","信号歪み","周波数跳躍","不要放射","雑音床","反射位相","搬送位相偏差"],
+  interstellar:["密度ゆらぎ","吸収線強度","塵反射","赤方偏移","散乱率","プラズマ不安定","放射尾","星間磁場","光度変動","塵温度"],
+  planetary:["地殻振動","気圧変動","波動伝播","反射率変化","地層共鳴","表面乱流","潮汐応答","突風ピーク","表面波紋","雷活動"],
+  particle:["到達カウント","エネルギーピーク","カウント密度","検出分散","入射角","背景スパイク","崩壊系列","粒子フラックス","電荷比","陽電子反応"],
+  gravity:["歪み率","潮汐応力","曲率変動","重力勾配","位相ずれ","質量分布偏差","重心移動","波状振幅","共鳴線","歪みピーク"],
+  stellar:["フレア強度","脈動周期","スペクトル線幅","光度変動","コロナ干渉","黒点活動","放射帯","短周期フラックス","粒子流入","輝度端"],
+  temporal:["同期偏差","基準時刻偏り","遅延量","周期シフト","時間分散","位相ジャンプ","時間遅延","ジッタ増加","同期崩壊","遅延相関"],
+  spatial:["位置偏差","軌道遅延","姿勢ドリフト","追跡散乱","ドリフト率","姿勢ノイズ","追跡喪失","軌道共鳴","距離偏差","トラックスパイク"],
+  icy:["反射率変化","氷圧シフト","放射検出","融解斑","亀裂発生","氷床振動","氷落下","薄膜干渉","融解パルス","氷鳴り"],
+  unclassified:["未知波形","未分類ピーク","生成ノイズ","ランダムバースト","鏡像歪み","自己相関ノイズ","合成雑音","外部同期失敗","クラスタ過渡","確率ピーク"]
+};
+
+/* expanded fields */
+const FIELD_VOCAB_EN = {}, FIELD_VOCAB_JP = {};
+
+/* DOM & state */
+const sceneGrid = document.getElementById('sceneGrid'), logEl = document.getElementById('log');
+const corrBar = document.getElementById('corrBar'), corrPct = document.getElementById('corrPct');
+const initOverlay = document.getElementById('initOverlay'), initBtn = document.getElementById('initBtn');
+const flashEl = document.getElementById('flash'), buzzerEl = document.getElementById('buzzer');
+const timeEl = document.getElementById('time'), languageBadge = document.getElementById('languageBadge');
+const userScrollHint = document.getElementById('userScrollHint');
+
+let audioCtx=null, masterGain=null, envNodes=[], scheduleTimer=null;
+let currentSite=null, correlation=0, isLogPaused=false;
+let logs = []; // {jp,en,ts,rare}
+let currentLang = 'BOTH';
+let userScrolledUp = false;
+const MAX_LOGS = 100; // trimmed target
+/* helpers */
+function nowTS(){ return new Date().toTimeString().split(' ')[0]; }
+function choice(a){ return a[Math.floor(Math.random()*a.length)]; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+/* expand vocab to 100 items */
+function expandVocabTo100(){
+  Object.keys(BASE_VOCAB).forEach(field=>{
+    const seedEN = BASE_VOCAB[field].slice(); const outEN = seedEN.slice();
+    const adjectives = ["short","long","high","low","rapid","slow","increasing","decreasing","periodic","random","band","local","sync","async","micro","prominent","residual","onset","repetitive","transient"];
+    const suffixes = [" fluctuation"," peak"," component"," response"," distortion"," rate"," amplitude"," mode"," noise"," pulse"];
+    let i=0;
+    while(outEN.length < 100 && i < 1500){
+      const a = choice(adjectives), s = choice(suffixes), b = choice(seedEN);
+      const cand = Math.random()<0.5 ? (a + " " + b) : (b + s);
+      if(!outEN.includes(cand)) outEN.push(cand); i++;
+    }
+    while(outEN.length < 100) outEN.push(`${field}_v${outEN.length+1}`);
+    FIELD_VOCAB_EN[field] = outEN.slice(0,100);
+
+    const seedJP = BASE_VOCAB_JP[field] ? BASE_VOCAB_JP[field].slice() : ["未分類項目"]; const outJP = seedJP.slice();
+    const adjectivesJP = ["短期","長期","高","低","急速","遅い","増加","減少","周期的","ランダム","帯域","局所","同期","非同期","微小","残留","発生","反復","過渡","顕著"];
+    const suffixesJP = ["振幅","ピーク","成分","応答","歪み","速度","率","振幅","モード","ノイズ"];
+    i=0;
+    while(outJP.length < 100 && i < 1500){
+      const a = choice(adjectivesJP), s = choice(suffixesJP), b = choice(seedJP);
+      const cand = Math.random()<0.5 ? (a + b) : (b + s);
+      if(!outJP.includes(cand)) outJP.push(cand); i++;
+    }
+    while(outJP.length < 100) outJP.push(`${field}_jp_v${outJP.length+1}`);
+    FIELD_VOCAB_JP[field] = outJP.slice(0,100);
+  });
+}
+
+/* build buttons */
+function buildButtons(){
+  sceneGrid.innerHTML = '';
+  SITES.forEach((s,i)=>{
+    const btn = document.createElement('button');
+    btn.className='sceneBtn'; btn.dataset.id=i;
+    btn.innerHTML = `<div class="jp">${s.jp}</div><div class="en">${s.en}</div><div class="led" aria-hidden="true"></div>`;
+    btn.addEventListener('click', ()=>{ document.querySelectorAll('.sceneBtn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); connectSite(i); });
+    sceneGrid.appendChild(btn);
+  });
+}
+
+/* audio init */
+function ensureAudio(){
+  if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); masterGain = audioCtx.createGain(); masterGain.gain.value = 0.6; masterGain.connect(audioCtx.destination); }
+}
+
+/* INIT */
+initBtn.addEventListener('click', async ()=>{
+  try{ if(!audioCtx){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); masterGain = audioCtx.createGain(); masterGain.gain.value = 0.6; masterGain.connect(audioCtx.destination);} if(audioCtx.state === 'suspended') await audioCtx.resume(); }catch(e){ console.warn(e); }
+  initOverlay.style.display = 'none';
+  appendLogSystem('SYSTEM READY','SYSTEM READY — Monitoring started');
+  expandVocabTo100();
+  buildButtons();
+  connectSite(0);
+  setInterval(()=>{ timeEl.textContent = new Date().toTimeString().split(' ')[0]; }, 1000);
+});
+
+/* env generator */
+const fieldTweak = {}; Object.keys(BASE_VOCAB).forEach(k=> fieldTweak[k] = {noise:0.02, drone:0.04, clicks:0.06});
+function clearEnv(){ envNodes.forEach(n=>{ try{ if(n.osc) n.osc.stop&&n.osc.stop(0); if(n.src) n.src.stop&&n.src.stop(0); if(n.i) clearInterval(n.i);}catch(e){} }); envNodes=[]; }
+function envGenerator(field){
+  clearEnv(); if(!audioCtx) return;
+  const tweak = fieldTweak[field] || {noise:0.02, drone:0.04, clicks:0.06};
+  const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+  o.type='sine'; o.frequency.value = (field==='interstellar'?36: field==='gravity'?22: 120); g.gain.value = tweak.drone;
+  o.connect(g).connect(masterGain); o.start(); envNodes.push({osc:o});
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*2, audioCtx.sampleRate); const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (Math.sin(i/8000)+1)/2;
+  const s = audioCtx.createBufferSource(); s.buffer = buf; s.loop = true;
+  const f = audioCtx.createBiquadFilter(); f.type='bandpass'; f.frequency.value = (field==='electromagnetic'?1200: field==='planetary'?200: 420);
+  const g2 = audioCtx.createGain(); g2.gain.value = tweak.noise;
+  s.connect(f).connect(g2).connect(masterGain); s.start(); envNodes.push({src:s});
+  const iv = setInterval(()=> playTransient(field), 3200 + Math.random()*4000); envNodes.push({i:iv});
+}
+
+/* sounds */
+function playTransient(field){ if(!audioCtx) return; const t0 = audioCtx.currentTime; const o = audioCtx.createOscillator(); const g = audioCtx.createGain(); o.type = Math.random()<0.5 ? 'sine' : 'triangle'; o.frequency.value = 260 + Math.random()*700; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.35,t0+0.015); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.6); o.connect(g).connect(masterGain); o.start(); o.stop(t0+0.65); }
+function playEventSound(type,field){ if(!audioCtx) return; const t0=audioCtx.currentTime; if(type==='approach'){ const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sine'; o.frequency.value=360; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.48,t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+0.9); o.connect(g).connect(masterGain); o.start(); o.stop(t0+1.0); } else if(type==='comm'){ const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.12,audioCtx.sampleRate); const dat=buf.getChannelData(0); for(let i=0;i<dat.length;i++) dat[i]=(Math.random()*2-1)*0.9*(Math.sin(i/6000)+1)/2; const s=audioCtx.createBufferSource(); s.buffer=buf; const f=audioCtx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=500 + Math.random()*700; s.connect(f).connect(masterGain); s.start(); s.stop(audioCtx.currentTime + 0.12); } else playTransient(field); }
+
+/* map obs->event */
+function mapObsToEvent(obs){ if(/arriv|arrival|到着|到達/i.test(obs)) return "approach"; if(/increase|decrease|drift|偏差|ドリフト/i.test(obs)) return "drift"; if(/period|pulse|周期|脈動/i.test(obs)) return "comm"; if(/vibrat|reson|振動|共鳴|衝撃/i.test(obs)) return "struct"; if(/flare|フレア|光度/i.test(obs)) return "energy"; if(/unknown|未知|unclassified/i.test(obs)) return "anomaly"; return "comm"; }
+
+/* scheduler */
+function scheduleForSite(site){
+  stopSchedule(); if(!site) return;
+  const min=4200,max=14000;
+  function loop(){
+    if(isLogPaused){ scheduleTimer=setTimeout(loop,1200); return; }
+    const burst = Math.random() < 0.25 ? 2 : 1;
+    for(let i=0;i<burst;i++){
+      setTimeout(()=>{
+        const vocabEN = FIELD_VOCAB_EN[site.field] || BASE_VOCAB[site.field];
+        const vocabJP = FIELD_VOCAB_JP[site.field] || BASE_VOCAB_JP[site.field] || ["未分類項目"];
+        const obsEN = choice(vocabEN);
+        const obsJP = choice(vocabJP);
+        const val = (Math.random()*100).toFixed(2);
+        const jpText = `${nowTS()} ${obsJP} 検出値 ${val}`;
+        const enText = `${nowTS()} ${obsEN} detected ${val}`;
+        appendLogObject({jp:jpText,en:enText,ts:Date.now(),rare:false});
+        playEventSound(mapObsToEvent(obsEN), site.field);
+        if(Math.random() < 0.035){ triggerRare(site); }
+        correlation = clamp(correlation + (Math.random()*2 - 0.6), 0, 100);
+        updateMeta();
+      }, i*240 + Math.random()*200);
+    }
+    const next = min + Math.random()*(max-min);
+    scheduleTimer = setTimeout(loop, Math.max(900, next * (1 - (correlation/160))));
+    correlation = Math.max(0, correlation - 0.5);
+    updateMeta();
+  }
+  loop();
+}
+function stopSchedule(){ if(scheduleTimer){ clearTimeout(scheduleTimer); scheduleTimer=null; } }
+
+/* rare */
+function triggerRare(site){
+  const jpText = `${nowTS()} 特殊事象を検出`;
+  const enText = `${nowTS()} Special phenomenon detected`;
+  appendLogObject({jp:jpText,en:enText,ts:Date.now(),rare:true});
+  correlation = clamp(correlation + 18 + Math.random()*12, 0, 100);
+  updateMeta();
+}
+
+/* LOG handling with 100-batch trim */
+function appendLogObject(obj){
+  logs.push(obj);
+  if(logs.length > MAX_LOGS){
+    const toRemove = logs.length - MAX_LOGS;
+    // Prefer removing in 100-item batches where possible
+    const batch = toRemove >= 100 ? Math.ceil(toRemove / 100) * 100 : toRemove;
+    const actual = Math.min(batch, toRemove);
+    logs.splice(0, actual);
+  }
+  forceRerenderLogs({scrollToBottom:true});
+}
+function appendLogSystem(jp,en){ appendLogObject({jp:`${nowTS()} ${jp}`, en:`${nowTS()} ${en}`, ts:Date.now(), rare:false}); }
+
+/* render */
+function forceRerenderLogs({scrollToBottom=false} = {}){
+  const atBottomBefore = Math.abs(logEl.scrollTop + logEl.clientHeight - logEl.scrollHeight) < 8;
+  const doAutoScroll = (scrollToBottom || atBottomBefore) && !userScrolledUp;
+  const start = Math.max(0, logs.length - MAX_LOGS);
+  logEl.innerHTML = '';
+  for(let i=start; i<logs.length; i++){
+    const it = logs[i];
+    const entry = document.createElement('div'); entry.className='entry';
+    if(it.rare) entry.classList.add('highlight');
+    if(currentLang === 'JP'){ const d=document.createElement('div'); d.className='jp'; d.textContent=it.jp; entry.appendChild(d); }
+    else if(currentLang === 'EN'){ const d=document.createElement('div'); d.className='en'; d.textContent=it.en; entry.appendChild(d); }
+    else { const d1=document.createElement('div'); d1.className='jp'; d1.textContent=it.jp; const d2=document.createElement('div'); d2.className='en'; d2.textContent=it.en; entry.appendChild(d1); entry.appendChild(d2); }
+    logEl.appendChild(entry);
+  }
+  if(doAutoScroll && !userScrolledUp) logEl.scrollTop = logEl.scrollHeight;
+  userScrollHint.style.display = userScrolledUp ? 'block' : 'none';
+}
+
+/* user scroll capture */
+logEl.addEventListener('scroll', ()=>{ const atBottom = Math.abs(logEl.scrollTop + logEl.clientHeight - logEl.scrollHeight) < 8; userScrolledUp = !atBottom; userScrollHint.style.display = userScrolledUp ? 'block' : 'none'; });
+
+/* visuals */
+function triggerVisual(site){ doFlash(); playRareSound(site); }
+function doFlash(){ flashEl.style.background = 'rgba(255,100,100,0.16)'; setTimeout(()=> flashEl.style.background = 'transparent', 140); }
+function playRareSound(site){ if(!audioCtx) return; const t0=audioCtx.currentTime; const id = site.id % 5; if(id===1){ const a=audioCtx.createOscillator(), ag=audioCtx.createGain(); a.type='sine'; a.frequency.value=36; ag.gain.value=0.12; a.connect(ag).connect(masterGain); a.start(); a.stop(t0+1.6); } else if(id===3){ const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='triangle'; o.frequency.value=160; g.gain.value=0.6; o.connect(g).connect(masterGain); o.start(); o.stop(t0+0.9); } else { const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='sawtooth'; o.frequency.value=220; g.gain.value=0.6; o.connect(g).connect(masterGain); o.start(); o.stop(t0+0.9); } }
+
+/* connect site */
+function connectSite(index){ stopSchedule(); if(index<0||index>=SITES.length) return; currentSite = SITES[index]; appendLogSystem(`CONNECT: ${currentSite.jp}`, `Connection established — ${currentSite.en}`); correlation=0; updateMeta(); if(!audioCtx) ensureAudio(); clearEnv(); envGenerator(currentSite.field); scheduleForSite(currentSite); }
+
+/* meta */
+function updateMeta(){ corrPct.textContent = `Corr ${Math.round(correlation)}%`; corrBar.style.width = `${Math.round(correlation)}%`; }
+
+/* language badge cycle */
+function updateLanguageBadgeUI(){ if(currentLang==='JP') languageBadge.textContent='JP'; else if(currentLang==='EN') languageBadge.textContent='EN'; else languageBadge.textContent='JP / EN'; }
+languageBadge.addEventListener('click', ()=>{ if(currentLang==='BOTH') currentLang='JP'; else if(currentLang==='JP') currentLang='EN'; else currentLang='BOTH'; updateLanguageBadgeUI(); forceRerenderLogs({scrollToBottom:false}); });
+
+/* prebuild placeholders */
+(function prebuild(){ for(let i=0;i<20;i++){ const p=document.createElement('div'); p.className='sceneBtn'; p.innerHTML=`<div class="jp">---</div><div class="en">---</div><div class="led"></div>`; sceneGrid.appendChild(p); } })();
+
+/* cleanup */
+window.addEventListener('beforeunload', ()=>{ clearEnv(); if(scheduleTimer) clearTimeout(scheduleTimer); if(audioCtx && audioCtx.state !== 'closed') try{ audioCtx.close(); }catch(e){} });
+
+/* debug */
+window.Observer = { connect: connectSite, logs: logs, setLang: (m)=>{ currentLang=m; updateLanguageBadgeUI(); forceRerenderLogs(); } };
+
+</script>
+</body>
+</html>
